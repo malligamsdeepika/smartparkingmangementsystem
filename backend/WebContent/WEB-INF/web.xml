@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<web-app xmlns="https://jakarta.ee/xml/ns/jakartaee"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="https://jakarta.ee/xml/ns/jakartaee
+         https://jakarta.ee/xml/ns/jakartaee/web-app_6_0.xsd"
+         version="6.0">
+
+    <display-name>Smart Parking Management System</display-name>
+    <description>Enterprise Smart Parking Management Backend - BCA College Project</description>
+
+    <!-- Global CORS Filter -->
+    <filter>
+        <filter-name>CorsFilter</filter-name>
+        <filter-class>com.smartparking.servlet.CorsFilter</filter-class>
+    </filter>
+    <filter-mapping>
+        <filter-name>CorsFilter</filter-name>
+        <url-pattern>/*</url-pattern>
+    </filter-mapping>
+
+    <!-- Authentication Servlet -->
+    <servlet>
+        <servlet-name>AuthServlet</servlet-name>
+        <servlet-class>com.smartparking.servlet.AuthServlet</servlet-class>
+    </servlet>
+    <servlet-mapping>
+        <servlet-name>AuthServlet</servlet-name>
+        <url-pattern>/api/auth/*</url-pattern>
+    </servlet-mapping>
+
+    <!-- Location Servlet -->
+    <servlet>
+        <servlet-name>LocationServlet</servlet-name>
+        <servlet-class>com.smartparking.servlet.LocationServlet</servlet-class>
+    </servlet>
+    <servlet-mapping>
+        <servlet-name>LocationServlet</servlet-name>
+        <url-pattern>/api/locations</url-pattern>
+    </servlet-mapping>
+    <servlet-mapping>
+        <servlet-name>LocationServlet</servlet-name>
+        <url-pattern>/api/locations/*</url-pattern>
+    </servlet-mapping>
+
+    <!-- Parking Slots Servlet -->
+    <servlet>
+        <servlet-name>SlotServlet</servlet-name>
+        <servlet-class>com.smartparking.servlet.SlotServlet</servlet-class>
+    </servlet>
+    <servlet-mapping>
+        <servlet-name>SlotServlet</servlet-name>
+        <url-pattern>/api/slots</url-pattern>
+    </servlet-mapping>
+    <servlet-mapping>
+        <servlet-name>SlotServlet</servlet-name>
+        <url-pattern>/api/slots/*</url-pattern>
+    </servlet-mapping>
+
+    <!-- Bookings Servlet -->
+    <servlet>
+        <servlet-name>BookingServlet</servlet-name>
+        <servlet-class>com.smartparking.servlet.BookingServlet</servlet-class>
+    </servlet>
+    <servlet-mapping>
+        <servlet-name>BookingServlet</servlet-name>
+        <url-pattern>/api/bookings</url-pattern>
+    </servlet-mapping>
+    <servlet-mapping>
+        <servlet-name>BookingServlet</servlet-name>
+        <url-pattern>/api/bookings/*</url-pattern>
+    </servlet-mapping>
+
+    <!-- Payments Servlet -->
+    <servlet>
+        <servlet-name>PaymentServlet</servlet-name>
+        <servlet-class>com.smartparking.servlet.PaymentServlet</servlet-class>
+    </servlet>
+    <servlet-mapping>
+        <servlet-name>PaymentServlet</servlet-name>
+        <url-pattern>/api/payments</url-pattern>
+    </servlet-mapping>
+    <servlet-mapping>
+        <servlet-name>PaymentServlet</servlet-name>
+        <url-pattern>/api/payments/*</url-pattern>
+    </servlet-mapping>
+
+    <!-- Realtime SSE & Broadcast Servlet -->
+    <servlet>
+        <servlet-name>RealtimeServlet</servlet-name>
+        <servlet-class>com.smartparking.servlet.RealtimeServlet</servlet-class>
+        <async-supported>true</async-supported>
+    </servlet>
+    <servlet-mapping>
+        <servlet-name>RealtimeServlet</servlet-name>
+        <url-pattern>/api/events</url-pattern>
+    </servlet-mapping>
+    <servlet-mapping>
+        <servlet-name>RealtimeServlet</servlet-name>
+        <url-pattern>/api/realtime/broadcast</url-pattern>
+    </servlet-mapping>
+
+    <!-- Administrator Real-Time Notifications Servlet -->
+    <servlet>
+        <servlet-name>NotificationServlet</servlet-name>
+        <servlet-class>com.smartparking.servlet.NotificationServlet</servlet-class>
+    </servlet>
+    <servlet-mapping>
+        <servlet-name>NotificationServlet</servlet-name>
+        <url-pattern>/api/admin/notifications</url-pattern>
+    </servlet-mapping>
+    <servlet-mapping>
+        <servlet-name>NotificationServlet</servlet-name>
+        <url-pattern>/api/admin/notifications/*</url-pattern>
+    </servlet-mapping>
+
+    <session-config>
+        <session-timeout>30</session-timeout>
+        <cookie-config>
+            <http-only>true</http-only>
+            <secure>false</secure>
+        </cookie-config>
+    </session-config>
+
+</web-app>

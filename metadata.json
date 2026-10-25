@@ -1,0 +1,6 @@
+{
+  "name": "Smart Parking Management System",
+  "description": "A modern, responsive Smart Parking Management System for real-time slot finding, automated fee calculations, instant booking, and comprehensive admin analytics.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
