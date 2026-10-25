@@ -22,8 +22,6 @@ import { MultiDeviceModal } from './components/MultiDeviceModal';
 import { ParkingMapModal } from './components/ParkingMapModal';
 import { NotificationPanel } from './components/NotificationPanel';
 import { GateScannerModal } from './components/GateScannerModal';
-import { AdminBookingToast, BookingAlertItem } from './components/AdminBookingToast';
-import { UserBookingAlertToast, UserAlertNotification } from './components/UserBookingAlertToast';
 import { soundManager } from './utils/sound';
 import { RealtimeSync, RealtimeEventPayload } from './services/realtimeSync';
 import { SmartNotification } from './types';
@@ -72,8 +70,6 @@ export default function App() {
   const [isGateScannerOpen, setIsGateScannerOpen] = useState(false);
   const [confirmedBooking, setConfirmedBooking] = useState<Booking | null>(null);
   const [notifications, setNotifications] = useState<SmartNotification[]>(() => StorageService.getNotifications());
-  const [globalAdminAlerts, setGlobalAdminAlerts] = useState<BookingAlertItem[]>([]);
-  const [userAlerts, setUserAlerts] = useState<UserAlertNotification[]>([]);
 
   // Keep stable refs to avoid re-triggering effects when user or active tab changes
   const currentUserRef = React.useRef(currentUser);
@@ -150,156 +146,17 @@ export default function App() {
       return changed ? freshNotifs : prev;
     });
 
-    // Auto-sync unread admin booking notifications into globalAdminAlerts so Laptop B gets alerts on any tab
-    if (activeTabRef.current !== 'admin') {
-      const adminNotifs = StorageService.getAdminNotifications();
-      const unreadBookingNotifs = adminNotifs.filter(
-        (n) => (n.type === 'new_booking' || (n.title && n.title.toLowerCase().includes('booking'))) && !n.isRead && !n.read
-      );
-      if (unreadBookingNotifs.length > 0) {
-        setGlobalAdminAlerts((prev) => {
-          const existingBookingIds = new Set(prev.map((a) => a.bookingId).filter(Boolean));
-          const existingIds = new Set(prev.map((a) => a.id));
-          const newAlerts: BookingAlertItem[] = [];
-
-          for (const notif of unreadBookingNotifs) {
-            const bId = notif.bookingId || notif.metadata?.bookingId;
-            const alertId = `global-alert-${bId || notif.id}`;
-            if (existingIds.has(alertId) || (bId && existingBookingIds.has(bId))) continue;
-
-            const bookingTime = notif.metadata?.bookingTime || new Date(notif.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-            newAlerts.push({
-              id: alertId,
-              notificationId: notif.id,
-              bookingId: bId,
-              userName: notif.metadata?.userName || 'Driver',
-              vehicleNumber: notif.metadata?.vehicleNumber || 'APXX1234',
-              locationName: notif.metadata?.locationName || 'Central Facility',
-              floor: notif.metadata?.floor || 'Floor 1',
-              slotNumber: notif.metadata?.slotNumber || 'P-101',
-              bookingTime,
-              amount: notif.metadata?.amount || 40,
-              status: notif.metadata?.status || 'Confirmed',
-              receivedAt: new Date(notif.createdAt),
-            });
-            existingIds.add(alertId);
-            if (bId) existingBookingIds.add(bId);
-          }
-
-          if (newAlerts.length > 0) {
-            soundManager.play('admin');
-            newAlerts.forEach((item) => {
-              soundManager.showDesktopNotification('🔔 New Parking Booking Received', {
-                body: `Bay: ${item.slotNumber} | Vehicle: ${item.vehicleNumber} | User: ${item.userName} | ₹${item.amount}`,
-              });
-            });
-            return [...prev, ...newAlerts];
-          }
-          return prev;
-        });
-      }
-    }
   }, []);
 
   useEffect(() => {
-    // 4. Avoid false notifications on initial load:
-    // Ignore existing bookings on initial load so old bookings don't notify on page load.
-    let isInitialLoad = true;
-    const initialSyncTimer = setTimeout(() => {
-      isInitialLoad = false;
-    }, 1500);
-
-    // Track notified booking IDs to prevent duplicates
-    const notifiedBookingIds = new Set<string>();
-    StorageService.getBookings().forEach((b) => {
-      if (b.id) notifiedBookingIds.add(b.id);
-      if (b.bookingCode) notifiedBookingIds.add(b.bookingCode);
-    });
-
-    // 3. One global listener on the shared real-time booking updates
-    const unsubscribe = RealtimeSync.subscribe((event: RealtimeEventPayload) => {
-      // 6. Live updates: refresh data across whole app so Parking Slots page updates live
+    // 1. One global listener on shared real-time updates to update slot availability and bookings silently.
+    // Requirement 1 & 6: Remove all admin booking notification pop-ups, toast messages, floating cards,
+    // and live alerts from the user-facing interface. Only authenticated Admin Console receives admin alerts.
+    const unsubscribe = RealtimeSync.subscribe((_event: RealtimeEventPayload) => {
       refreshAllData();
-
-      if (
-        event.eventType === 'NEW_BOOKING' ||
-        event.eventType === 'BOOKING_CREATED' ||
-        (event.eventType === 'ADMIN_NOTIFICATION' && event.payload?.notification?.type === 'new_booking')
-      ) {
-        const payload = event.payload;
-        const booking = payload?.booking;
-        const notif = payload?.notification;
-        const bId = payload?.bookingId || booking?.id || notif?.bookingId || notif?.metadata?.bookingId;
-
-        // 4. Ignore initial snapshot and ignore if already notified
-        if (isInitialLoad || (bId && notifiedBookingIds.has(bId))) {
-          if (bId) notifiedBookingIds.add(bId);
-          return;
-        }
-
-        const bookingUserId = payload?.userId || booking?.userId || notif?.metadata?.userId;
-        const currentUserId = currentUserRef.current?.id;
-
-        // 4. Ignore bookings made by the current user's own userId so they don't get two notifications
-        if (bookingUserId && currentUserId && bookingUserId === currentUserId) {
-          if (bId) notifiedBookingIds.add(bId);
-          return;
-        }
-
-        if (bId) notifiedBookingIds.add(bId);
-
-        const slotNumber = payload?.slotNumber || booking?.slotNumber || notif?.metadata?.slotNumber || 'P-101';
-        const userName = payload?.userName || booking?.userName || notif?.metadata?.userName || 'Driver';
-        const vehicleNumber = payload?.vehicleNumber || booking?.vehicleNumber || notif?.metadata?.vehicleNumber || '';
-        const locationName = payload?.locationName || booking?.locationName || notif?.metadata?.locationName || 'Central Facility';
-        const floor = payload?.floor || booking?.floor || notif?.metadata?.floor || 'Ground Floor';
-        const bookingTime = payload?.bookingTime || booking?.entryTime || notif?.metadata?.bookingTime || 'Just now';
-        const amount = payload?.amount || booking?.amount || notif?.metadata?.amount || 40;
-
-        // Message: "Slot G-01 was booked by Rahul"
-        const notifBody = `Slot ${slotNumber} was booked by ${userName}`;
-
-        // Play chime tone
-        soundManager.play('bell');
-
-        // 5. Browser Notification (if permission granted; falls back to in-app toast)
-        soundManager.showDesktopNotification('🚗 Parking Slot Booked', {
-          body: notifBody,
-        });
-
-        // 3. Show in-app Toast notification (visible on both Admin and Normal Users)
-        const alertItem: BookingAlertItem = {
-          id: `alert-${bId || Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-          bookingId: bId,
-          userName,
-          vehicleNumber,
-          locationName,
-          floor,
-          slotNumber,
-          bookingTime,
-          amount,
-          status: 'Confirmed',
-          receivedAt: new Date(),
-        };
-
-        setGlobalAdminAlerts((prev) => {
-          if (bId && prev.some((a) => a.bookingId === bId)) return prev;
-          return [alertItem, ...prev];
-        });
-      }
-
-      // 6. Normal users & Admins notified when any slot status changes (booked or released)
-      if (event.eventType === 'SLOT_UPDATED' || event.eventType === 'BOOKING_CANCELLED') {
-        const slotNumber = event.payload?.slotNumber || 'Bay';
-        const newStatus = event.payload?.status || 'available';
-        const statusText = newStatus === 'available' ? 'is now available' : `is now ${newStatus}`;
-        soundManager.showDesktopNotification('🅿️ Slot Status Updated', {
-          body: `Slot ${slotNumber} ${statusText}`,
-        });
-      }
     });
 
-    // Immediate and periodic synchronization to guarantee parity
+    // Immediate and periodic synchronization to guarantee multi-device parity
     StorageService.syncWithServer()
       .then(() => refreshAllData())
       .catch(() => {});
@@ -313,9 +170,7 @@ export default function App() {
     };
     window.addEventListener('smartparking:sync', handleSync);
 
-    // 4. Unsubscribe in the useEffect cleanup so notifications don't duplicate
     return () => {
-      clearTimeout(initialSyncTimer);
       clearInterval(reconcileTimer);
       unsubscribe();
       window.removeEventListener('smartparking:sync', handleSync);
@@ -386,10 +241,15 @@ export default function App() {
     }
   };
 
+  const userNotifications = React.useMemo(() => {
+    if (!currentUser) return [];
+    return notifications.filter((n) => n.userId === currentUser.id);
+  }, [notifications, currentUser]);
+
   const unreadNotificationsCount =
     currentUser?.role === 'admin'
       ? StorageService.getAdminNotifications().filter((n) => !n.isRead && !n.read).length
-      : notifications.filter((n) => !n.read).length;
+      : userNotifications.filter((n) => !n.read).length;
 
   return (
     <div className="min-h-screen bg-slate-50/50 text-slate-900 flex flex-col font-sans selection:bg-blue-100 selection:text-blue-900">
@@ -418,19 +278,7 @@ export default function App() {
         }}
         onOpenGateScanner={() => setIsGateScannerOpen(true)}
         onOpenMultiDevice={() => setIsMultiDeviceOpen(true)}
-        onSwitchToAdmin={() => {
-          const adminUser = StorageService.getUsers().find((u) => u.role === 'admin') || {
-            id: 'usr-admin',
-            name: 'System Administrator',
-            email: 'admin@smartparking.com',
-            phone: '9999900000',
-            role: 'admin' as const,
-            createdAt: new Date().toISOString(),
-          };
-          StorageService.setCurrentUser(adminUser as any);
-          setCurrentUser(adminUser as any);
-          setActiveTab('admin');
-        }}
+        onSwitchToAdmin={() => handleOpenAuth('admin')}
         unreadNotificationsCount={unreadNotificationsCount}
       />
 
@@ -757,7 +605,7 @@ export default function App() {
       <NotificationPanel
         isOpen={isNotificationsOpen}
         onClose={() => setIsNotificationsOpen(false)}
-        notifications={notifications}
+        notifications={userNotifications}
         onMarkAsRead={(id: string) => {
           StorageService.markNotificationAsRead(id);
           refreshAllData();
@@ -777,8 +625,9 @@ export default function App() {
           else setActiveTab('my-bookings');
         }}
         onSimulateReminder={() => {
+          if (!currentUser) return;
           StorageService.addNotification({
-            userId: currentUser?.id || 'usr-1',
+            userId: currentUser.id,
             title: 'Parking Reminder: 15 Minutes Left',
             message: 'Your reserved parking session at Ground Floor G-04 expires in 15 minutes. Extend now to prevent overtime charges.',
             type: 'time_reminder',
@@ -805,32 +654,7 @@ export default function App() {
       <TestingHelperWidget
         currentUser={currentUser}
         onLoginAs={(role) => {
-          const target =
-            StorageService.getUsers().find((u) => u.role === role) ||
-            (role === 'admin'
-              ? {
-                  id: 'usr-admin',
-                  name: 'System Administrator',
-                  email: 'admin@smartparking.com',
-                  phone: '9999900000',
-                  role: 'admin' as const,
-                  createdAt: new Date().toISOString(),
-                }
-              : {
-                  id: 'usr-1',
-                  name: 'Rahul Sharma',
-                  email: 'rahul@example.com',
-                  phone: '9876543210',
-                  role: 'user' as const,
-                  createdAt: new Date().toISOString(),
-                });
-          StorageService.setCurrentUser(target);
-          setCurrentUser(target);
-          if (role === 'admin') {
-            setActiveTab('admin');
-          } else {
-            setActiveTab('home');
-          }
+          handleOpenAuth(role === 'admin' ? 'admin' : 'login');
         }}
         onOpenFeeCalc={() => setIsFeeCalcOpen(true)}
         onOpenDocs={() => setIsDocsOpen(true)}
@@ -838,39 +662,6 @@ export default function App() {
         onResetData={handleResetData}
       />
 
-      {/* Driver / Customer Booking Alert Toast */}
-      <UserBookingAlertToast
-        alerts={userAlerts}
-        onDismiss={(id) => setUserAlerts((prev) => prev.filter((a) => a.id !== id))}
-        onViewPass={(b) => setConfirmedBooking(b)}
-        onViewMyBookings={() => {
-          setActiveTab('my-bookings');
-          window.scrollTo({ top: 0, behavior: 'smooth' });
-        }}
-      />
-
-      {/* Global Booking Notification Toast when outside Admin Console */}
-      {activeTab !== 'admin' && (
-        <AdminBookingToast
-          alerts={globalAdminAlerts}
-          onDismiss={(id) => setGlobalAdminAlerts((prev) => prev.filter((a) => a.id !== id))}
-          onOpenAdminConsole={() => {
-            if (currentUser?.role !== 'admin') {
-              const adminUser = StorageService.getUsers().find((u) => u.role === 'admin') || {
-                id: 'usr-admin',
-                name: 'System Administrator',
-                email: 'admin@smartparking.com',
-                phone: '9999900000',
-                role: 'admin',
-                createdAt: new Date().toISOString(),
-              };
-              StorageService.setCurrentUser(adminUser as any);
-              setCurrentUser(adminUser as any);
-            }
-            setActiveTab('admin');
-          }}
-        />
-      )}
     </div>
   );
 }

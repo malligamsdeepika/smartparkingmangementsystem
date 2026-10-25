@@ -718,12 +718,13 @@
       "slotNumber": "F1-09",
       "floor": "Floor 1",
       "vehicleType": "bike",
-      "status": "available",
+      "status": "reserved",
       "hourlyRateFirstHour": 20,
       "hourlyRateAdditional": 10,
       "hasCharging": false,
       "distanceToEntranceMeters": 178,
-      "isShaded": true
+      "isShaded": true,
+      "currentBookingId": "PK-51070"
     },
     {
       "id": "slot-loc1-22",
@@ -6230,6 +6231,32 @@
   ],
   "bookings": [
     {
+      "id": "PK-51070",
+      "bookingCode": "PK-51070",
+      "userId": "usr-tester-99",
+      "userName": "Likitha Shetty",
+      "userEmail": "likitha@example.com",
+      "userPhone": "9876543210",
+      "locationId": "loc-1",
+      "locationName": "Metro City Center Plaza",
+      "slotId": "slot-loc1-21",
+      "slotNumber": "F1-09",
+      "floor": "Floor 1",
+      "vehicleType": "car",
+      "vehicleNumber": "KA-01-MJ-9999",
+      "bookingDate": "2026-10-25",
+      "entryTime": "14:00",
+      "exitTime": "16:00",
+      "durationHours": 2,
+      "amount": 40,
+      "paymentStatus": "paid",
+      "paymentMethod": "upi",
+      "status": "confirmed",
+      "transactionId": "TXN-09884842",
+      "createdAt": "2026-10-25T06:31:24.843Z",
+      "qrCodeData": "SMART_PARK|PK-51070|F1-09|KA-01-MJ-9999"
+    },
+    {
       "id": "PK-28226",
       "bookingCode": "PK-28226",
       "userId": "usr-2",
@@ -6806,6 +6833,15 @@
   ],
   "payments": [
     {
+      "id": "pay-1792909884843",
+      "bookingId": "PK-51070",
+      "amount": 40,
+      "paymentMethod": "upi",
+      "status": "completed",
+      "timestamp": "2026-10-25T06:31:24.843Z",
+      "transactionId": "TXN-09884842"
+    },
+    {
       "id": "pay-1791713120920",
       "bookingId": "PK-28226",
       "amount": 40,
@@ -7051,6 +7087,16 @@
   ],
   "notifications": [
     {
+      "id": "notif-1792909884843",
+      "userId": "usr-tester-99",
+      "title": "Booking Confirmed - Bay F1-09",
+      "message": "Reservation PK-51070 confirmed. Scan QR pass at gate barrier.",
+      "type": "booking_confirm",
+      "read": false,
+      "createdAt": "2026-10-25T06:31:24.843Z",
+      "bookingId": "PK-51070"
+    },
+    {
       "id": "notif-1791713120920",
       "userId": "usr-2",
       "title": "Booking Confirmed - Bay F1-07",
@@ -7251,6 +7297,55 @@
     }
   ],
   "adminNotifications": [
+    {
+      "id": "adm-notif-1792909884851-386",
+      "adminId": "usr-admin",
+      "title": "Payment Received: ₹40.00",
+      "message": "Payment of ₹40.00 verified for Booking #PK-51070 via UPI (Txn: TXN-09884842).",
+      "type": "payment_update",
+      "createdAt": "2026-10-25T06:31:24.851Z",
+      "isRead": false,
+      "read": false,
+      "relatedEntityId": "pay-1792909884843",
+      "bookingId": "PK-51070",
+      "metadata": {
+        "paymentId": "pay-1792909884843",
+        "bookingId": "PK-51070",
+        "amount": 40,
+        "paymentMethod": "upi",
+        "transactionId": "TXN-09884842",
+        "paymentStatus": "completed"
+      }
+    },
+    {
+      "id": "adm-notif-1792909884846-835",
+      "adminId": "usr-admin",
+      "title": "New Parking Booking Received",
+      "message": "User: Likitha Shetty | Vehicle Number: KA-01-MJ-9999 | Location: Metro City Center Plaza | Floor: Floor 1 | Slot: F1-09 | Booking Time: 14:00 | Payment: Paid",
+      "type": "new_booking",
+      "createdAt": "2026-10-25T06:31:24.846Z",
+      "isRead": false,
+      "read": false,
+      "relatedEntityId": "PK-51070",
+      "bookingId": "PK-51070",
+      "metadata": {
+        "bookingId": "PK-51070",
+        "bookingCode": "PK-51070",
+        "slotId": "slot-loc1-21",
+        "slotNumber": "F1-09",
+        "floor": "Floor 1",
+        "locationId": "loc-1",
+        "locationName": "Metro City Center Plaza",
+        "userName": "Likitha Shetty",
+        "userPhone": "9876543210",
+        "vehicleNumber": "KA-01-MJ-9999",
+        "bookingTime": "14:00",
+        "paymentStatus": "Paid",
+        "status": "Confirmed",
+        "amount": 40,
+        "paymentMethod": "upi"
+      }
+    },
     {
       "id": "adm-notif-1791713120930-855",
       "adminId": "usr-admin",
@@ -8261,5 +8356,5 @@
       }
     }
   ],
-  "lastUpdated": "2026-10-11T10:05:20.930Z"
+  "lastUpdated": "2026-10-25T06:31:24.851Z"
 }

@@ -378,10 +378,7 @@ export const StorageService = {
     if (!localStorage.getItem(STORAGE_KEYS.USERS)) {
       setItem(STORAGE_KEYS.USERS, INITIAL_USERS);
     }
-    if (!localStorage.getItem(STORAGE_KEYS.CURRENT_USER)) {
-      // Default to logged-in demo user for immediate smooth demo experience
-      setItem(STORAGE_KEYS.CURRENT_USER, INITIAL_USERS[0]);
-    }
+    // Do not force-default to Rahul Sharma; session starts empty unless a user previously logged in
     if (!localStorage.getItem(STORAGE_KEYS.NOTIFICATIONS)) {
       setItem(STORAGE_KEYS.NOTIFICATIONS, INITIAL_NOTIFICATIONS);
     }
@@ -593,6 +590,9 @@ export const StorageService = {
         if (data.sessions) {
           setItem(STORAGE_KEYS.SESSIONS, data.sessions);
         }
+        if (data.users && data.users.length > 0) {
+          setItem(STORAGE_KEYS.USERS, data.users);
+        }
         if (data.adminNotifications && data.adminNotifications.length > 0) {
           setItem(STORAGE_KEYS.ADMIN_NOTIFICATIONS, data.adminNotifications);
         }
@@ -625,7 +625,7 @@ export const StorageService = {
   },
 
   getCurrentUser(): User | null {
-    return getItem<User | null>(STORAGE_KEYS.CURRENT_USER, INITIAL_USERS[0]);
+    return getItem<User | null>(STORAGE_KEYS.CURRENT_USER, null);
   },
 
   setCurrentUser(user: User | null): void {
@@ -636,9 +636,59 @@ export const StorageService = {
     }
   },
 
+  async registerUserAsync(
+    name: string,
+    email: string,
+    phone: string,
+    password: string
+  ): Promise<{ success: boolean; message: string; user?: User }> {
+    try {
+      const res = await ApiService.register({
+        name: name.trim(),
+        email: email.trim().toLowerCase(),
+        phone: phone.trim(),
+        password,
+        role: 'user',
+      });
+
+      if (res && res.success && res.user) {
+        const users = this.getUsers();
+        const existingIdx = users.findIndex(
+          (u) => u.id === res.user.id || u.email.toLowerCase() === res.user.email.toLowerCase()
+        );
+        if (existingIdx !== -1) {
+          users[existingIdx] = res.user;
+        } else {
+          users.push(res.user);
+        }
+        setItem(STORAGE_KEYS.USERS, users);
+        this.setCurrentUser(res.user);
+
+        // Auto notification for registration
+        this.addNotification({
+          userId: res.user.id,
+          title: 'Registration Successful',
+          message: `Welcome, ${res.user.name}! Your Smart Parking driver account is active.`,
+          type: 'registration',
+        });
+
+        return { success: true, message: res.message || 'Registration successful! Welcome.', user: res.user };
+      }
+
+      if (res && !res.success) {
+        return { success: false, message: res.message || 'Registration failed.' };
+      }
+    } catch (err: any) {
+      console.warn('[Register Async error, fallback to local storage]', err);
+    }
+
+    // Fallback to local storage
+    return this.registerUser(name, email, phone, password);
+  },
+
   registerUser(name: string, email: string, phone: string, password: string): { success: boolean; message: string; user?: User } {
     const users = this.getUsers();
-    if (users.some((u) => u.email.toLowerCase() === email.toLowerCase())) {
+    if (users.some((u) => u.email.toLowerCase() === email.toLowerCase().trim())) {
       return { success: false, message: 'Email address already registered!' };
     }
     const newUser: User = {
@@ -680,13 +730,46 @@ export const StorageService = {
     return { success: true, message: 'Registration successful! Welcome.', user: newUser };
   },
 
+  async loginUserAsync(
+    email: string,
+    password: string,
+    asAdmin = false
+  ): Promise<{ success: boolean; message: string; user?: User }> {
+    try {
+      const res = await ApiService.login(email.trim().toLowerCase(), password, asAdmin);
+      if (res && res.success && res.user) {
+        this.setCurrentUser(res.user);
+        const users = this.getUsers();
+        const existingIdx = users.findIndex(
+          (u) => u.id === res.user.id || u.email.toLowerCase() === res.user.email.toLowerCase()
+        );
+        if (existingIdx !== -1) {
+          users[existingIdx] = res.user;
+        } else {
+          users.push(res.user);
+        }
+        setItem(STORAGE_KEYS.USERS, users);
+        return { success: true, message: res.message || `Welcome back, ${res.user.name}!`, user: res.user };
+      }
+
+      if (res && !res.success) {
+        return { success: false, message: res.message || 'Login failed.' };
+      }
+    } catch (err: any) {
+      console.warn('[Login Async error, fallback to local storage]', err);
+    }
+
+    // Fallback to local authentication
+    return this.loginUser(email, password, asAdmin);
+  },
+
   loginUser(email: string, password: string, asAdmin = false): { success: boolean; message: string; user?: User } {
     const users = this.getUsers();
     const cleanEmail = email.trim().toLowerCase();
     const user = users.find((u) => u.email.toLowerCase() === cleanEmail);
 
     if (!user) {
-      return { success: false, message: 'Account not found with this email.' };
+      return { success: false, message: 'Account not found with this email. Please check your credentials or register.' };
     }
 
     if (user.password && user.password !== password) {

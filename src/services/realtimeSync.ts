@@ -40,6 +40,7 @@ class RealtimeSyncManager {
   private processedEventKeys = new Set<string>();
   private knownBookingIds = new Set<string>();
   private knownNotifIds = new Set<string>();
+  private isInitialPoll = true;
 
   constructor() {
     if (typeof window !== 'undefined') {
@@ -379,6 +380,24 @@ class RealtimeSyncManager {
         if (res && res.success && res.data) {
           const data = res.data;
 
+          // On initial poll, record existing notifications and bookings as already seen so we never produce duplicate alerts
+          if (this.isInitialPoll) {
+            this.isInitialPoll = false;
+            if (Array.isArray(data.adminNotifications)) {
+              data.adminNotifications.forEach((n: any) => {
+                this.processedEventKeys.add(`NEW_BOOKING:${n.id}`);
+                const bId = n.bookingId || n.metadata?.bookingId;
+                if (bId) this.processedEventKeys.add(`NEW_BOOKING:${bId}`);
+              });
+            }
+            if (Array.isArray(data.bookings)) {
+              data.bookings.forEach((b: any) => {
+                if (b.id) this.processedEventKeys.add(`NEW_BOOKING:${b.id}`);
+              });
+            }
+            return;
+          }
+
           // Check if there are newly arrived admin notifications that haven't been shown
           if (Array.isArray(data.adminNotifications)) {
             const unreadBookingNotifs = data.adminNotifications.filter(
@@ -405,9 +424,11 @@ class RealtimeSyncManager {
                     customerName: notif.metadata?.userName || 'Driver',
                     vehicleNumber: notif.metadata?.vehicleNumber || 'APXX1234',
                     locationName: notif.metadata?.locationName || 'Central Facility',
-                    floor: notif.metadata?.floor || 'Floor 1',
+                    floor: notif.metadata?.floor || 'Ground Floor',
                     slotNumber: notif.metadata?.slotNumber || 'P-101',
+                    slotId: notif.metadata?.slotId || notif.metadata?.slotNumber || 'P-101',
                     bookingTime,
+                    paymentStatus: notif.metadata?.paymentStatus || 'Paid (Completed)',
                     amount: notif.metadata?.amount || 40,
                     status: notif.metadata?.status || 'Confirmed',
                     unreadCount: data.adminUnreadCount ?? 1,

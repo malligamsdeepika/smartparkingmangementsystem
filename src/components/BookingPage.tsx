@@ -60,7 +60,7 @@ export const BookingPage: React.FC<BookingPageProps> = ({
   const [isLocationSelectorExpanded, setIsLocationSelectorExpanded] = useState<boolean>(false);
 
   const [vehicleType, setVehicleType] = useState<VehicleType>('car');
-  const [vehicleNumber, setVehicleNumber] = useState<string>('KA 03 MX 4421');
+  const [vehicleNumber, setVehicleNumber] = useState<string>('');
   const [selectedSlotId, setSelectedSlotId] = useState<string>(initialSlotId || '');
   const [isPlateScannerOpen, setIsPlateScannerOpen] = useState(false);
   const [slotSelectionMode, setSlotSelectionMode] = useState<'map' | 'grid'>('map');
@@ -83,9 +83,13 @@ export const BookingPage: React.FC<BookingPageProps> = ({
 
   useEffect(() => {
     if (currentUser) {
-      setUserName(currentUser.name);
-      setUserEmail(currentUser.email);
-      setUserPhone(currentUser.phone);
+      setUserName(currentUser.name || '');
+      setUserEmail(currentUser.email || '');
+      setUserPhone(currentUser.phone || '');
+    } else {
+      setUserName('');
+      setUserEmail('');
+      setUserPhone('');
     }
   }, [currentUser]);
 
@@ -600,7 +604,7 @@ export const BookingPage: React.FC<BookingPageProps> = ({
                     id="booking-vehicle-number-input"
                     value={vehicleNumber}
                     onChange={(e) => setVehicleNumber(e.target.value.toUpperCase())}
-                    placeholder="e.g. KA 03 MX 4421"
+                    placeholder="e.g. KA 01 AB 1234"
                     required
                     className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold tracking-wider uppercase text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
                   />
@@ -851,7 +855,7 @@ export const BookingPage: React.FC<BookingPageProps> = ({
                   id="booking-user-name"
                   value={userName}
                   onChange={(e) => setUserName(e.target.value)}
-                  placeholder="e.g. Rahul Sharma"
+                  placeholder="e.g. Your Full Name"
                   required
                   className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none"
                 />

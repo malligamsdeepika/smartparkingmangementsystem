@@ -207,14 +207,17 @@ let adminNotifications: AdminNotification[] = [
 ];
 
 // Helper to create & broadcast Admin Notifications
-export function createAdminNotification(params: {
-  title: string;
-  message: string;
-  type: string;
-  relatedEntityId?: string;
-  adminId?: string;
-  metadata?: Record<string, any>;
-}): AdminNotification {
+export function createAdminNotification(
+  params: {
+    title: string;
+    message: string;
+    type: string;
+    relatedEntityId?: string;
+    adminId?: string;
+    metadata?: Record<string, any>;
+  },
+  options: { skipBroadcast?: boolean } = {}
+): AdminNotification {
   const targetBookingId = params.metadata?.bookingId || params.relatedEntityId;
   // Prevent duplicate notifications for the same booking or payment
   if (targetBookingId && (params.type === 'new_booking' || params.type === 'payment_update')) {
@@ -246,8 +249,8 @@ export function createAdminNotification(params: {
   const unreadCount = adminNotifications.filter((n) => !n.isRead).length;
 
   if (params.type === 'new_booking') {
-    console.log('SERVER: Real-time booking event sent', {
-      eventType: 'ADMIN_NOTIFICATION',
+    console.log('SERVER: Real-time booking event saved to database', {
+      eventType: 'NEW_BOOKING',
       bookingId: notif.bookingId,
       slot: notif.metadata?.slotNumber,
       vehicle: notif.metadata?.vehicleNumber,
@@ -256,12 +259,14 @@ export function createAdminNotification(params: {
     });
   }
 
-  // Real-time broadcast to connected Admin Console clients
-  broadcastRealtimeEvent('ADMIN_NOTIFICATION', {
-    notification: notif,
-    unreadCount,
-    action: 'created',
-  });
+  // Real-time broadcast to connected Admin Console clients (unless explicitly skipped to avoid duplicates)
+  if (!options.skipBroadcast) {
+    broadcastRealtimeEvent('ADMIN_NOTIFICATION', {
+      notification: notif,
+      unreadCount,
+      action: 'created',
+    });
+  }
 
   return notif;
 }
@@ -605,6 +610,14 @@ app.get(['/api/sync', '/sync'], (req: Request, res: Response) => {
       notifications,
       adminNotifications,
       adminUnreadCount,
+      users: users.map((u) => ({
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        phone: u.phone,
+        role: u.role,
+        createdAt: u.createdAt,
+      })),
       activeClientsCount: sseClients.size,
       syncedAt: new Date().toISOString(),
     },
@@ -939,62 +952,71 @@ app.post(['/api/bookings', '/api/bookings/', '/bookings', '/bookings/'], (req: R
     const locName = targetLocation ? targetLocation.name : 'Central Parking Facility';
     const entryStr = newBooking.entryTime || 'Now';
 
-    // Admin Notification 1: New Parking Booking Received (Formatted per requirements)
-    const notif = createAdminNotification({
-      title: 'New Parking Booking Received',
-      message: `User: ${newBooking.userName} | Vehicle Number: ${newBooking.vehicleNumber} | Location: ${locName} | Floor: ${targetSlot.floor || 'Ground Floor'} | Slot: ${targetSlot.slotNumber} | Booking Time: ${entryStr}`,
-      type: 'new_booking',
-      relatedEntityId: newBooking.id,
-      metadata: {
-        bookingId: newBooking.id,
-        bookingCode: newBooking.bookingCode,
-        slotId: targetSlot.id,
-        slotNumber: targetSlot.slotNumber,
-        floor: targetSlot.floor || 'Ground Floor',
-        locationId: targetSlot.locationId,
-        locationName: locName,
-        userName: newBooking.userName,
-        userPhone: newBooking.userPhone,
-        vehicleNumber: newBooking.vehicleNumber,
-        bookingTime: entryStr,
-        status: 'Confirmed',
-        amount: newBooking.amount,
-        paymentMethod: newBooking.paymentMethod,
+    // Admin Notification 1: New Parking Booking Received (Formatted with all 7 required fields)
+    const notif = createAdminNotification(
+      {
+        title: 'New Parking Booking Received',
+        message: `User: ${newBooking.userName} | Vehicle Number: ${newBooking.vehicleNumber} | Location: ${locName} | Floor: ${targetSlot.floor || 'Ground Floor'} | Slot: ${targetSlot.slotNumber} | Booking Time: ${entryStr} | Payment: Paid`,
+        type: 'new_booking',
+        relatedEntityId: newBooking.id,
+        metadata: {
+          bookingId: newBooking.id,
+          bookingCode: newBooking.bookingCode,
+          slotId: targetSlot.id,
+          slotNumber: targetSlot.slotNumber,
+          floor: targetSlot.floor || 'Ground Floor',
+          locationId: targetSlot.locationId,
+          locationName: locName,
+          userName: newBooking.userName,
+          userPhone: newBooking.userPhone,
+          vehicleNumber: newBooking.vehicleNumber,
+          bookingTime: entryStr,
+          paymentStatus: 'Paid',
+          status: 'Confirmed',
+          amount: newBooking.amount,
+          paymentMethod: newBooking.paymentMethod || 'UPI',
+        },
       },
-    });
+      { skipBroadcast: true }
+    );
 
     // Admin Notification 2: Payment Received
-    createAdminNotification({
-      title: `Payment Received: ₹${newBooking.amount}.00`,
-      message: `Payment of ₹${newBooking.amount}.00 verified for Booking #${newBooking.bookingCode} via ${(paymentMethod || 'UPI').toUpperCase()} (Txn: ${transactionId}).`,
-      type: 'payment_update',
-      relatedEntityId: paymentRecord.id,
-      metadata: {
-        paymentId: paymentRecord.id,
-        bookingId: newBooking.id,
-        amount: newBooking.amount,
-        paymentMethod: paymentMethod || 'upi',
-        transactionId,
-        paymentStatus: 'completed',
+    createAdminNotification(
+      {
+        title: `Payment Received: ₹${newBooking.amount}.00`,
+        message: `Payment of ₹${newBooking.amount}.00 verified for Booking #${newBooking.bookingCode} via ${(paymentMethod || 'UPI').toUpperCase()} (Txn: ${transactionId}).`,
+        type: 'payment_update',
+        relatedEntityId: paymentRecord.id,
+        metadata: {
+          paymentId: paymentRecord.id,
+          bookingId: newBooking.id,
+          amount: newBooking.amount,
+          paymentMethod: paymentMethod || 'upi',
+          transactionId,
+          paymentStatus: 'completed',
+        },
       },
-    });
+      { skipBroadcast: true }
+    );
 
     // Capacity check after reservation
     checkLocationCapacity(targetSlot.locationId);
 
-    console.log('SERVER: Real-time booking event sent', {
+    console.log('SERVER: Real-time booking event sent to Admin Console', {
       eventType: 'NEW_BOOKING',
       bookingId: newBooking.id,
       slot: targetSlot.slotNumber,
-      floor: targetSlot.floor,
+      slotId: targetSlot.id,
+      floor: targetSlot.floor || 'Ground Floor',
       location: locName,
       vehicle: newBooking.vehicleNumber,
       user: newBooking.userName,
       bookingTime: entryStr,
+      paymentStatus: 'Paid',
       status: newBooking.status,
     });
 
-    // 1. Primary real-time booking event to Admin Consoles
+    // 1. Single rich real-time booking event dispatched to Admin Consoles with all 7 required details
     broadcastRealtimeEvent('NEW_BOOKING', {
       booking: newBooking,
       notification: notif,
@@ -1003,19 +1025,19 @@ app.post(['/api/bookings', '/api/bookings/', '/bookings', '/bookings/'], (req: R
       slotNumber: targetSlot.slotNumber,
       floor: targetSlot.floor || 'Ground Floor',
       locationName: locName,
+      locationId: targetSlot.locationId,
       userName: newBooking.userName,
       customerName: newBooking.userName,
       vehicleNumber: newBooking.vehicleNumber,
       bookingTime: entryStr,
+      paymentStatus: 'Paid',
       amount: newBooking.amount,
       status: 'Confirmed',
       unreadCount: adminNotifications.filter((n) => !n.isRead).length,
     });
 
-    // 2. Real-time broadcast for slot occupancy update
-    broadcastRealtimeEvent('BOOKING_CREATED', {
-      booking: newBooking,
-      notification: notif,
+    // 2. Real-time broadcast for slot occupancy update (so slot grids update live on all devices)
+    broadcastRealtimeEvent('SLOT_UPDATED', {
       slotId: targetSlot.id,
       slotNumber: targetSlot.slotNumber,
       floor: targetSlot.floor || 'Ground Floor',

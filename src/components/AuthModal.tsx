@@ -36,6 +36,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   React.useEffect(() => {
     setMode(initialMode);
@@ -44,9 +45,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     if (initialMode === 'admin') {
       setEmail('admin@smartparking.com');
       setPassword('admin123');
-    } else if (initialMode === 'login') {
-      setEmail('rahul@example.com');
-      setPassword('user123');
     } else {
       setName('');
       setEmail('');
@@ -57,21 +55,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleQuickFill = (type: 'user' | 'admin') => {
-    setErrorMsg('');
-    setSuccessMsg('');
-    if (type === 'user') {
-      setMode('login');
-      setEmail('rahul@example.com');
-      setPassword('user123');
-    } else {
-      setMode('admin');
-      setEmail('admin@smartparking.com');
-      setPassword('admin123');
-    }
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
     setSuccessMsg('');
@@ -90,28 +74,42 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         return;
       }
 
-      const res = StorageService.registerUser(name, email, phone, password);
-      if (res.success && res.user) {
-        setSuccessMsg(res.message);
-        setTimeout(() => {
-          onLoginSuccess(res.user!);
-          onClose();
-        }, 600);
-      } else {
-        setErrorMsg(res.message);
+      setIsSubmitting(true);
+      try {
+        const res = await StorageService.registerUserAsync(name, email, phone, password);
+        setIsSubmitting(false);
+        if (res.success && res.user) {
+          setSuccessMsg(res.message);
+          setTimeout(() => {
+            onLoginSuccess(res.user!);
+            onClose();
+          }, 600);
+        } else {
+          setErrorMsg(res.message || 'Registration failed. Please check details.');
+        }
+      } catch (err: any) {
+        setIsSubmitting(false);
+        setErrorMsg(err?.message || 'Error occurred during registration.');
       }
     } else {
       // Login or Admin
       const isAdmin = mode === 'admin';
-      const res = StorageService.loginUser(email, password, isAdmin);
-      if (res.success && res.user) {
-        setSuccessMsg(res.message);
-        setTimeout(() => {
-          onLoginSuccess(res.user!);
-          onClose();
-        }, 600);
-      } else {
-        setErrorMsg(res.message);
+      setIsSubmitting(true);
+      try {
+        const res = await StorageService.loginUserAsync(email, password, isAdmin);
+        setIsSubmitting(false);
+        if (res.success && res.user) {
+          setSuccessMsg(res.message);
+          setTimeout(() => {
+            onLoginSuccess(res.user!);
+            onClose();
+          }, 600);
+        } else {
+          setErrorMsg(res.message || 'Invalid email or password.');
+        }
+      } catch (err: any) {
+        setIsSubmitting(false);
+        setErrorMsg(err?.message || 'Error occurred during login.');
       }
     }
   };
@@ -184,31 +182,40 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           </p>
         </div>
 
-        {/* 1-Click Demo Fill Shortcuts */}
-        <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-2">
-          <div className="flex items-center justify-between text-[11px] text-slate-500">
-            <span className="font-semibold text-slate-700 flex items-center gap-1">
-              <Sparkles className="w-3 h-3 text-blue-600" />
-              <span>Quick Demo Fill for Testing:</span>
-            </span>
+        {/* Helper Note / Admin credential auto-fill */}
+        {mode === 'admin' ? (
+          <div className="p-3 bg-amber-50 rounded-2xl border border-amber-200/80 space-y-1.5 text-xs">
+            <div className="flex items-center justify-between text-amber-900 font-bold">
+              <span className="flex items-center gap-1">
+                <ShieldCheck className="w-4 h-4 text-amber-600" />
+                <span>Admin Portal Credentials</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setEmail('admin@smartparking.com');
+                  setPassword('admin123');
+                }}
+                className="text-[11px] font-bold text-amber-800 hover:text-amber-950 underline cursor-pointer"
+              >
+                Use Admin Preset
+              </button>
+            </div>
+            <p className="text-[11px] text-amber-700">
+              Authorized admin ID: <code className="font-mono bg-amber-100 px-1 py-0.5 rounded">admin@smartparking.com</code>
+            </p>
           </div>
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={() => handleQuickFill('user')}
-              className="py-1.5 px-2.5 rounded-lg bg-blue-100/70 hover:bg-blue-200/70 text-blue-800 text-xs font-semibold text-center transition-colors cursor-pointer"
-            >
-              Demo User (Rahul)
-            </button>
-            <button
-              type="button"
-              onClick={() => handleQuickFill('admin')}
-              className="py-1.5 px-2.5 rounded-lg bg-slate-800 hover:bg-slate-900 text-amber-300 text-xs font-semibold text-center transition-colors cursor-pointer"
-            >
-              Demo Admin (Officer)
-            </button>
+        ) : mode === 'register' ? (
+          <div className="p-3 bg-blue-50/70 rounded-2xl border border-blue-100 text-xs text-blue-900">
+            <p className="font-semibold flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+              <span>Register Your Driver Account</span>
+            </p>
+            <p className="text-[11px] text-blue-700 mt-0.5">
+              Create an account with your own name and phone number to reserve slots and manage parking passes.
+            </p>
           </div>
-        </div>
+        ) : null}
 
         {/* Messages */}
         {errorMsg && (
@@ -236,8 +243,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="Rahul Sharma"
+                  placeholder="e.g. Your Full Name"
                   required
+                  disabled={isSubmitting}
                   className="w-full pl-9 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-blue-500 focus:outline-none"
                 />
               </div>
@@ -252,8 +260,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder={mode === 'admin' ? 'admin@smartparking.com' : 'user@example.com'}
+                placeholder={mode === 'admin' ? 'admin@smartparking.com' : 'you@example.com'}
                 required
+                disabled={isSubmitting}
                 className="w-full pl-9 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-blue-500 focus:outline-none"
               />
             </div>
@@ -268,8 +277,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   type="tel"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
-                  placeholder="9876543210"
+                  placeholder="e.g. 9876543210"
                   required
+                  disabled={isSubmitting}
                   className="w-full pl-9 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-blue-500 focus:outline-none"
                 />
               </div>
@@ -286,6 +296,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
                 required
+                disabled={isSubmitting}
                 className="w-full pl-9 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-blue-500 focus:outline-none"
               />
             </div>
@@ -293,14 +304,25 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
           <button
             type="submit"
+            disabled={isSubmitting}
             className={`w-full py-3 rounded-xl font-bold text-xs text-white shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer ${
+              isSubmitting ? 'opacity-70 cursor-wait' : ''
+            } ${
               mode === 'admin'
                 ? 'bg-slate-900 hover:bg-slate-800'
                 : 'bg-blue-600 hover:bg-blue-700 shadow-blue-500/20'
             }`}
           >
             <span>
-              {mode === 'register' ? 'Complete Registration' : mode === 'admin' ? 'Access Admin Console' : 'Sign In'}
+              {isSubmitting
+                ? mode === 'register'
+                  ? 'Creating Account...'
+                  : 'Authenticating...'
+                : mode === 'register'
+                ? 'Complete Registration'
+                : mode === 'admin'
+                ? 'Access Admin Console'
+                : 'Sign In'}
             </span>
             <ArrowRight className="w-4 h-4" />
           </button>

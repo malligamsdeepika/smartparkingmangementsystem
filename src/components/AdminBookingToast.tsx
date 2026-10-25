@@ -24,7 +24,9 @@ export interface BookingAlertItem {
   locationName: string;
   floor: string;
   slotNumber: string;
+  slotId?: string;
   bookingTime: string;
+  paymentStatus?: string;
   amount?: number;
   status?: string;
   receivedAt: Date;
@@ -142,20 +144,20 @@ const ToastCard: React.FC<ToastCardProps> = ({ alert, onDismiss, onOpenAdminCons
         </button>
       </div>
 
-      {/* Grid of Key Booking Details */}
+      {/* Grid of All 7 Mandatory Booking Details */}
       <div className="py-3 grid grid-cols-2 gap-2 text-xs">
-        {/* User */}
+        {/* 1. User Name */}
         <div className="bg-slate-800/80 p-2 rounded-xl border border-slate-700/60">
           <span className="text-[10px] text-slate-400 font-medium flex items-center gap-1">
             <User className="w-3 h-3 text-cyan-400" />
-            <span>User:</span>
+            <span>User Name:</span>
           </span>
           <p className="font-extrabold text-white text-xs truncate mt-0.5">
             {alert.userName || 'Driver'}
           </p>
         </div>
 
-        {/* Vehicle Number */}
+        {/* 2. Vehicle Number */}
         <div className="bg-slate-800/80 p-2 rounded-xl border border-slate-700/60">
           <span className="text-[10px] text-slate-400 font-medium flex items-center gap-1">
             <Car className="w-3 h-3 text-amber-400" />
@@ -166,51 +168,61 @@ const ToastCard: React.FC<ToastCardProps> = ({ alert, onDismiss, onOpenAdminCons
           </p>
         </div>
 
-        {/* Location */}
+        {/* 3. Parking Location */}
         <div className="bg-slate-800/80 p-2 rounded-xl border border-slate-700/60">
           <span className="text-[10px] text-slate-400 font-medium flex items-center gap-1">
             <MapPin className="w-3 h-3 text-rose-400" />
-            <span>Location:</span>
+            <span>Parking Location:</span>
           </span>
           <p className="font-bold text-slate-200 text-xs truncate mt-0.5">
             {alert.locationName || 'Central Facility'}
           </p>
         </div>
 
-        {/* Floor */}
+        {/* 4. Floor Number */}
         <div className="bg-slate-800/80 p-2 rounded-xl border border-slate-700/60">
           <span className="text-[10px] text-slate-400 font-medium flex items-center gap-1">
             <Layers className="w-3 h-3 text-purple-400" />
-            <span>Floor:</span>
+            <span>Floor Number:</span>
           </span>
           <p className="font-extrabold text-purple-300 text-xs truncate mt-0.5">
-            {alert.floor || 'Floor 2'}
+            {alert.floor || 'Ground Floor'}
           </p>
         </div>
 
-        {/* Slot */}
+        {/* 5. Parking Slot ID */}
         <div className="bg-slate-800/80 p-2 rounded-xl border border-slate-700/60">
           <span className="text-[10px] text-slate-400 font-medium flex items-center gap-1">
             <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-            <span>Slot:</span>
+            <span>Parking Slot ID:</span>
           </span>
           <p className="font-extrabold text-emerald-400 text-xs truncate mt-0.5 font-mono">
-            {alert.slotNumber || 'P-205'}
+            {alert.slotNumber || alert.slotId || 'P-101'}
           </p>
         </div>
 
-        {/* Booking Time */}
-        <div className="bg-slate-800/80 p-2 rounded-xl border border-slate-700/60 col-span-2 flex items-center justify-between">
+        {/* 6. Booking Time */}
+        <div className="bg-slate-800/80 p-2 rounded-xl border border-slate-700/60">
+          <span className="text-[10px] text-slate-400 font-medium flex items-center gap-1">
+            <Clock className="w-3 h-3 text-blue-400" />
+            <span>Booking Time:</span>
+          </span>
+          <p className="font-bold text-white text-xs truncate mt-0.5">
+            {alert.bookingTime || 'Just now'}
+          </p>
+        </div>
+
+        {/* 7. Payment Status */}
+        <div className="bg-slate-800/80 p-2 rounded-xl border border-emerald-500/40 col-span-2 flex items-center justify-between">
           <div className="flex items-center gap-1.5">
-            <Clock className="w-3.5 h-3.5 text-blue-400" />
-            <span className="text-[11px] text-slate-400">Booking Time:</span>
-            <span className="font-bold text-white text-xs">{alert.bookingTime || 'Just now'}</span>
+            <CreditCard className="w-3.5 h-3.5 text-emerald-400" />
+            <span className="text-[11px] text-slate-300 font-medium">Payment Status:</span>
           </div>
-          {alert.amount && (
-            <span className="text-[11px] font-extrabold text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded-md border border-emerald-800/60">
-              ₹{alert.amount}.00 Paid
-            </span>
-          )}
+          <span className="text-[11px] font-extrabold text-emerald-300 bg-emerald-950/80 px-2.5 py-0.5 rounded-md border border-emerald-700/60 flex items-center gap-1">
+            <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+            <span>{alert.paymentStatus || 'Paid (Completed)'}</span>
+            {alert.amount ? ` • ₹${alert.amount}.00` : ''}
+          </span>
         </div>
       </div>
 

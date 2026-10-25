@@ -41,20 +41,26 @@ export const TestingHelperWidget: React.FC<TestingHelperWidgetProps> = ({
   const [testSent, setTestSent] = useState(false);
 
   const handleTriggerLiveAlert = async () => {
-    soundManager.play('admin');
-    soundManager.showDesktopNotification('🔔 Live Slot Booking Alert', {
-      body: 'Bay: G-05 | Vehicle: DL-08-CC-9999 | Driver: Vikram Malhotra | Status: Confirmed',
-    });
+    // Only play sound and show desktop alert on the admin screen
+    if (currentUser?.role === 'admin') {
+      soundManager.play('admin');
+      soundManager.showDesktopNotification('🔔 Live Slot Booking Alert', {
+        body: 'Bay: G-05 | Vehicle: DL 08 CC 9999 | Driver: Vikram Malhotra | Status: Confirmed',
+      });
+    }
 
     const bId = `BK-${Date.now().toString().slice(-5)}`;
+    const currentTimeFormatted = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
     const payload = {
       bookingId: bId,
       userName: 'Vikram Malhotra',
-      vehicleNumber: 'DL-08-CC-9999',
+      vehicleNumber: 'DL 08 CC 9999',
       locationName: 'Central Parking Facility',
       floor: 'Ground Floor',
+      slotId: 'slot-loc1-5',
       slotNumber: 'G-05',
-      bookingTime: 'Just now',
+      bookingTime: currentTimeFormatted,
+      paymentStatus: 'Paid',
       amount: 40,
       status: 'Confirmed',
     };
@@ -62,24 +68,23 @@ export const TestingHelperWidget: React.FC<TestingHelperWidgetProps> = ({
     // Save to storage
     StorageService.addAdminNotification({
       title: 'New Parking Booking Received',
-      message: `User: Vikram Malhotra | Vehicle Number: DL-08-CC-9999 | Location: Central Parking Facility | Floor: Ground Floor | Slot: G-05 | Booking Time: Just now`,
+      message: `User: Vikram Malhotra | Vehicle: DL 08 CC 9999 | Location: Central Parking Facility | Floor: Ground Floor | Slot: G-05 | Time: ${currentTimeFormatted} | Payment: Paid`,
       type: 'new_booking',
       relatedEntityId: bId,
       metadata: payload,
     });
 
-    // Broadcast across network to other laptop/phone
+    // Broadcast across network to Admin Console on Laptop B
     try {
       await RealtimeSync.broadcast('NEW_BOOKING', payload);
     } catch {}
 
-    // Dispatch locally
-    window.dispatchEvent(
-      new CustomEvent('smartparking:admin-notification', { detail: payload })
-    );
-    window.dispatchEvent(
-      new CustomEvent('smartparking:new-booking', { detail: payload })
-    );
+    // Dispatch locally only if admin is logged in
+    if (currentUser?.role === 'admin') {
+      window.dispatchEvent(
+        new CustomEvent('smartparking:admin-notification', { detail: payload })
+      );
+    }
 
     setTestSent(true);
     setTimeout(() => setTestSent(false), 3000);
@@ -113,7 +118,7 @@ export const TestingHelperWidget: React.FC<TestingHelperWidgetProps> = ({
           {/* 1-Click Persona Switcher */}
           <div className="space-y-1.5">
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-              1-Click Persona Switcher
+              Account Access
             </span>
             <div className="grid grid-cols-2 gap-2">
               <button
@@ -127,7 +132,7 @@ export const TestingHelperWidget: React.FC<TestingHelperWidgetProps> = ({
                 }`}
               >
                 <User className="w-3.5 h-3.5" />
-                <span>Driver (Rahul)</span>
+                <span>Driver Login</span>
               </button>
 
               <button
@@ -141,7 +146,7 @@ export const TestingHelperWidget: React.FC<TestingHelperWidgetProps> = ({
                 }`}
               >
                 <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
-                <span>Admin (Officer)</span>
+                <span>Admin Login</span>
               </button>
             </div>
             {currentUser && (

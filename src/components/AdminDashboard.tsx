@@ -90,6 +90,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [notificationError, setNotificationError] = useState<string | null>(null);
   const [bookingAlerts, setBookingAlerts] = useState<BookingAlertItem[]>([]);
   const dismissedAlertIdsRef = useRef<Set<string>>(new Set<string>());
+  const processedBookingIdsRef = useRef<Set<string>>(new Set<string>());
   const [isSoundEnabled, setIsSoundEnabled] = useState<boolean>(soundManager.isSoundEnabled());
   const [notifPermission, setNotifPermission] = useState<string>(
     typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'denied'
@@ -180,90 +181,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         setUnreadAdminCount(local.filter((n) => !n.isRead && !n.read).length);
       }
 
-      // If admin opened Console after bookings occurred, show unread booking alerts immediately
-      const unreadBookingNotifs = notifsList.filter(
-        (n) => (n.type === 'new_booking' || n.title.toLowerCase().includes('booking')) && !n.isRead && !n.read
-      );
-      if (unreadBookingNotifs.length > 0) {
-        // Deduplicate notifications by bookingId upfront so identical booking alerts are not doubled
-        const uniqueNotifsByBooking = new Map<string, (typeof unreadBookingNotifs)[0]>();
-        for (const n of unreadBookingNotifs) {
-          const groupKey = n.bookingId || n.metadata?.bookingId || n.id;
-          if (!uniqueNotifsByBooking.has(groupKey)) {
-            uniqueNotifsByBooking.set(groupKey, n);
-          }
-        }
-
-        const alertsFromUnread: BookingAlertItem[] = Array.from(uniqueNotifsByBooking.values()).map((n) => {
-          let user = n.metadata?.userName || 'Driver';
-          let vehicle = n.metadata?.vehicleNumber || 'APXX1234';
-          let location = n.metadata?.locationName || 'Central Facility';
-          let floor = n.metadata?.floor || 'Floor 1';
-          let slot = n.metadata?.slotNumber || 'P-101';
-          let time = n.metadata?.bookingTime || new Date(n.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-          if (n.message && n.message.includes('|')) {
-            const parts = n.message.split('|');
-            for (const part of parts) {
-              const [k, ...v] = part.split(':');
-              const key = k?.trim().toLowerCase();
-              const val = v?.join(':').trim();
-              if (key === 'user') user = val;
-              else if (key === 'vehicle' || key === 'vehicle number') vehicle = val;
-              else if (key === 'location') location = val;
-              else if (key === 'floor') floor = val;
-              else if (key === 'slot') slot = val;
-              else if (key === 'booking time') time = val;
-            }
-          }
-
-          const bId = n.bookingId || n.metadata?.bookingId;
-          const uniqueAlertId = `alert-${bId || n.id}-${n.id}`;
-
-          return {
-            id: uniqueAlertId,
-            notificationId: n.id,
-            bookingId: bId,
-            userName: user,
-            vehicleNumber: vehicle,
-            locationName: location,
-            floor: floor,
-            slotNumber: slot,
-            bookingTime: time,
-            amount: n.metadata?.amount || 40,
-            status: n.metadata?.status || 'Confirmed',
-            receivedAt: new Date(n.createdAt),
-          };
-        });
-
-        setBookingAlerts((prev) => {
-          const existingBookingIds = new Set(prev.map((a) => a.bookingId).filter(Boolean));
-          const existingNotifIds = new Set(prev.map((a) => a.notificationId).filter(Boolean));
-          const existingIds = new Set(prev.map((a) => a.id));
-
-          const newItems: BookingAlertItem[] = [];
-          for (const a of alertsFromUnread) {
-            if (existingIds.has(a.id) || dismissedAlertIdsRef.current.has(a.id)) continue;
-            if (a.bookingId && (existingBookingIds.has(a.bookingId) || dismissedAlertIdsRef.current.has(a.bookingId))) continue;
-            if (a.notificationId && (existingNotifIds.has(a.notificationId) || dismissedAlertIdsRef.current.has(a.notificationId))) continue;
-
-            existingIds.add(a.id);
-            if (a.bookingId) existingBookingIds.add(a.bookingId);
-            if (a.notificationId) existingNotifIds.add(a.notificationId);
-            newItems.push(a);
-          }
-
-          if (newItems.length === 0) return prev;
-          // Play chime and trigger desktop notifications for newly arrived booking alerts
-          soundManager.play('admin');
-          newItems.forEach((item) => {
-            soundManager.showDesktopNotification('🔔 New Parking Booking Received', {
-              body: `Bay: ${item.slotNumber} | Vehicle: ${item.vehicleNumber} | User: ${item.userName} | ₹${item.amount}`,
-            });
-          });
-          return [...prev, ...newItems];
-        });
-      }
+      // Note: Live toast alerts are triggered strictly by new incoming real-time events,
+      // never replayed from historical records on page load/refresh (Requirement 8).
     } catch {
       const local = StorageService.getAdminNotifications();
       setAdminNotifications(local);
@@ -274,6 +193,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   }, []);
 
   useEffect(() => {
+    // Populate processedBookingIds with existing records on initial load to prevent duplicate popups on refresh/reconnect
+    StorageService.getBookings().forEach((b) => {
+      if (b.id) processedBookingIdsRef.current.add(b.id);
+      if (b.bookingCode) processedBookingIdsRef.current.add(b.bookingCode);
+    });
+    StorageService.getAdminNotifications().forEach((n) => {
+      if (n.bookingId) processedBookingIdsRef.current.add(n.bookingId);
+      if (n.relatedEntityId) processedBookingIdsRef.current.add(n.relatedEntityId);
+    });
+
     // Initial fetch of notifications and cloud bookings
     fetchAdminNotifications();
     fetchCloudBookings();
@@ -287,6 +216,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
     // 1. Subscribe to true real-time events (<50ms delivery)
     const unsubscribeRealtime = RealtimeSync.subscribe((event) => {
+      // 6. Admin Authentication: Only authenticated admin accounts receive and view admin booking notifications
+      if (currentUserRef.current?.role !== 'admin') {
+        return;
+      }
+
       // INSTANT ADMIN NOTIFICATION & NEW BOOKING DISPATCH (<1s Delivery)
       if (
         event.eventType === 'NEW_BOOKING' ||
@@ -302,6 +236,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           event.eventType === 'BOOKING_CREATED';
 
         if (isBookingEvent) {
+          const bookingId =
+            event.payload?.bookingId ||
+            incoming?.bookingId ||
+            newBooking?.id;
+
+          // 8. Prevent Duplicates: Ignore if this booking was already processed or dismissed
+          if (bookingId && (processedBookingIdsRef.current.has(bookingId) || dismissedAlertIdsRef.current.has(bookingId))) {
+            return;
+          }
+          if (bookingId) {
+            processedBookingIdsRef.current.add(bookingId);
+          }
+
+          // 3. Extract all 7 Mandatory Notification Details:
+          // User Name, Vehicle Number, Parking Location, Floor Number, Parking Slot ID, Booking Time, Payment Status
           const userName =
             event.payload?.userName ||
             incoming?.metadata?.userName ||
@@ -321,17 +270,26 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             event.payload?.floor ||
             incoming?.metadata?.floor ||
             newBooking?.floor ||
-            'Floor 1';
+            'Ground Floor';
           const slotNumber =
             event.payload?.slotNumber ||
             incoming?.metadata?.slotNumber ||
             newBooking?.slotNumber ||
             'P-101';
+          const slotId =
+            event.payload?.slotId ||
+            incoming?.metadata?.slotId ||
+            newBooking?.slotId ||
+            slotNumber;
           const bookingTime =
             event.payload?.bookingTime ||
             incoming?.metadata?.bookingTime ||
             newBooking?.entryTime ||
             'Just now';
+          const paymentStatus =
+            event.payload?.paymentStatus ||
+            incoming?.metadata?.paymentStatus ||
+            'Paid (Completed)';
           const amount =
             event.payload?.amount ||
             incoming?.metadata?.amount ||
@@ -342,13 +300,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             incoming?.metadata?.status ||
             newBooking?.status ||
             'Confirmed';
-          const bookingId =
-            event.payload?.bookingId ||
-            incoming?.bookingId ||
-            newBooking?.id ||
-            `BK-${Date.now()}`;
 
-          console.log('ADMIN: Booking notification received', {
+          console.log('ADMIN CONSOLE: Real-time booking notification received from multi-device stream', {
             bookingId,
             user: userName,
             vehicle: vehicleNumber,
@@ -356,17 +309,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             floor,
             slot: slotNumber,
             bookingTime,
+            paymentStatus,
+            amount,
             status,
           });
 
-          // 1. Play real-time notification audio chime & desktop notification
+          // 1. Play real-time notification audio chime
           playNotificationChime();
+
+          // 2. Browser Desktop Notification (Admin Console only)
           soundManager.showDesktopNotification('🔔 Live Parking Booking Received', {
-            body: `Slot: ${slotNumber} | Vehicle: ${vehicleNumber} | User: ${userName} | ₹${amount}`,
+            body: `Bay: ${slotNumber} | Vehicle: ${vehicleNumber} | User: ${userName} | ${paymentStatus}: ₹${amount}`,
           });
 
-          // 2. Push prominent floating real-time toast alert
-          const alertId = `alert-${bookingId || incoming?.id || Date.now()}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+          // 3. Push prominent floating real-time toast alert exclusively in the Admin Console
+          const alertId = `alert-${bookingId || Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
           const alertItem: BookingAlertItem = {
             id: alertId,
             notificationId: incoming?.id,
@@ -376,27 +333,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             locationName,
             floor,
             slotNumber,
+            slotId,
             bookingTime,
+            paymentStatus,
             amount,
             status,
             receivedAt: new Date(),
           };
-          setBookingAlerts((prev) => {
-            // Deduplicate if same booking already active
-            if (
-              prev.some(
-                (a) =>
-                  a.id === alertId ||
-                  (bookingId && a.bookingId === bookingId) ||
-                  (incoming?.id && a.notificationId === incoming.id)
-              )
-            ) {
-              return prev;
-            }
-            return [alertItem, ...prev];
-          });
 
-          // 3. Update Admin Notifications history
+          setBookingAlerts((prev) => [
+            alertItem,
+            ...prev.filter((a) => (bookingId ? a.bookingId !== bookingId : true) && a.id !== alertId),
+          ]);
+
+          // 4. Update Admin Notifications history
           if (incoming) {
             setAdminNotifications((prev) => {
               if (prev.some((n) => n.id === incoming.id || (incoming.bookingId && n.bookingId === incoming.bookingId))) {
@@ -409,7 +359,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               id: `adm-notif-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
               adminId: 'usr-admin',
               title: 'New Parking Booking Received',
-              message: `Location: ${locationName} | Slot: ${slotNumber} | Vehicle: ${vehicleNumber} | User: ${userName} | Booking Time: ${bookingTime} | Status: Confirmed`,
+              message: `User: ${userName} | Vehicle Number: ${vehicleNumber} | Location: ${locationName} | Floor: ${floor} | Slot: ${slotNumber} | Booking Time: ${bookingTime} | Payment: ${paymentStatus}`,
               type: 'new_booking',
               createdAt: new Date().toISOString(),
               isRead: false,
@@ -418,12 +368,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               relatedEntityId: bookingId,
               metadata: {
                 bookingId,
+                slotId,
                 slotNumber,
                 floor,
                 locationName,
                 vehicleNumber,
                 userName,
                 bookingTime,
+                paymentStatus,
                 amount,
                 status,
               },
@@ -431,14 +383,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             setAdminNotifications((prev) => [synthNotif, ...prev]);
           }
 
-          // 4. Increase unread badge count
+          // 5. Increase unread badge count
           if (typeof event.payload?.unreadCount === 'number') {
             setUnreadAdminCount(event.payload.unreadCount);
           } else {
             setUnreadAdminCount((prev) => prev + 1);
           }
 
-          // 5. Update local bookings table immediately
+          // 6. Update local bookings table immediately
           if (newBooking) {
             setLocalBookings((prev) => {
               if (prev.some((b) => b.id === newBooking.id || b.bookingCode === newBooking.bookingCode)) {
@@ -449,7 +401,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           } else if (bookingId) {
             fetchCloudBookings(true);
           }
-          // Refresh global state across whole application
+
+          // Refresh global state across application
           try { onRefreshDataRef.current?.(); } catch {}
           return;
         }
